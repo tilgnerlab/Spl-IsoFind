@@ -1,10 +1,18 @@
-# Spatial Isoform Finder
+# Spatial Isoform Finder (Spl-IsoFind)
 
-This GitHub can be used to detect spatially variable isoforms in long-read spatial transcriptomics data. For now it only contains demo data and Python scripts, but a Python package with proper tutorials will follow soon.
+Spl-IsoFind can be used to detect spatially variable isoforms in long-read spatial transcriptomics data. 
 
-One can create a conda environment with all packages required to run the Spl-IsoFind code using the following argument:
+### Installation
+
+SplIsoFind requires Python 3.9 or higher. The easiest way to install is through the following command:
 
 ```
-conda env create -f environment.yml
+pip install SplIsoFind
 ```
+
+### Tutorials
+
+The tutorial folder contains notebooks to run Spl-IsoFind on demo data. See the documentation for more information. The demo datasets can be downloaded here: 
+
+For citation and further information please refer to our [preprint](https://www.biorxiv.org/content/10.1101/2025.06.25.661563v1)
 
