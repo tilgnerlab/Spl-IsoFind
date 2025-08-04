@@ -287,6 +287,7 @@ def create_isoform_matrix(
     Build and save a filtered cell by isoform sparse matrix for a single slide.
 
     This function:
+
     1. Loads read-level data via `readAllInfo`.
     2. Filters genes with at least `mincells` total reads.
     3. Filters isoforms with at least `mincellspergroup` reads.
@@ -388,6 +389,7 @@ def create_isoform_matrix_twoslides(
     This function performs the same filtering and matrix construction as
     `create_isoform_matrix`, but for two separate slides whose results
     are then vertically concatenated:
+
     1. Load and concatenate `readAllInfo` outputs for slide1 and slide2.
     2. Apply gene and isoform read count filters.
     3. Construct separate sparse matrices via `constructSparseMatrix`.
@@ -487,11 +489,12 @@ def sparse2df(
     Load a saved sparse isoform matrix into dense DataFrame form.
 
     This function:
+    
     1. Reads `labels.csv` and `genes_isoforms.csv`.
     2. Loads `X_sparse.npz` as a CSR matrix.
     3. Converts zeros to NaN via a mask.
     4. Returns:
-    
+
     - `x`: DataFrame of PSI values (cells × isoforms).
     - `labels`: DataFrame of cell metadata.
 

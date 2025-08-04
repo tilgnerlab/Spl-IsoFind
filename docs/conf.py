@@ -22,3 +22,4 @@ html_theme = 'sphinx_rtd_theme'
 html_static_path = ['_static']
 
 nbsphinx_execute = 'never'
+jupyter_execute_notebooks = "off"
