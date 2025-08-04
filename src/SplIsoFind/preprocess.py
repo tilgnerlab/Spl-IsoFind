@@ -294,9 +294,10 @@ def create_isoform_matrix(
     5. Constructs a cell-by-isoform sparse PSI matrix.
     6. Filters matrix columns by the same cell count thresholds.
     7. Saves:
-       - `X_sparse.npz`: CSR matrix of PSI values.
-       - `genes_isoforms.csv`: List of (Gene, Isoform) pairs.
-       - `labels.csv`: Cell metadata from AnnData.
+
+    - `X_sparse.npz`: CSR matrix of PSI values.
+    - `genes_isoforms.csv`: List of (Gene, Isoform) pairs.
+    - `labels.csv`: Cell metadata from AnnData.
 
     Parameters
     ----------
@@ -490,8 +491,9 @@ def sparse2df(
     2. Loads `X_sparse.npz` as a CSR matrix.
     3. Converts zeros to NaN via a mask.
     4. Returns:
-       - `x`: DataFrame of PSI values (cells × isoforms).
-       - `labels`: DataFrame of cell metadata.
+    
+    - `x`: DataFrame of PSI values (cells × isoforms).
+    - `labels`: DataFrame of cell metadata.
 
     Parameters
     ----------
