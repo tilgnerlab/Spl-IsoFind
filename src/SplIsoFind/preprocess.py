@@ -1,14 +1,47 @@
+# SPDX-License-Identifier: MIT
+"""
+Utilities for annotating reads in an allinfo file with cell types and constructing sparse isoform matrices.
+
+This module provides functions to:
+
+- Label reads with celltype-region labels from segmentation data
+- Generate auxiliary CSV outputs for scisorseqr (isoform IDs, counts per cluster)
+- Build sparse cell-by-isoform matrices for downstream analysis
+- Combine two-slide experiments
+- Load sparse matrices into DataFrames
+"""
 from pathlib import Path
 import pandas as pd 
 import numpy as np
 import scanpy as sc
 from tqdm.notebook import tqdm
 from collections import defaultdict
-from scipy.sparse import csr_matrix, save_npz, load_npz
+from scipy.sparse import csr_matrix, save_npz, load_npz, vstack
 
+def allinfo_addct(
+    fn_allinfo: str,
+    fn_CIDmap: str,
+    fn_adata: str
+) -> None:
+    """
+    Annotate raw read allinfo file with cell-type-region labels and save filtered file.
 
+    Parameters
+    ----------
+    fn_allinfo : str
+        Path to raw AllInfo TSV file (index_col=0, no header).
+    fn_CIDmap : str
+        Path to TSV file with mapping of barcodes to original CellIDs.
+    fn_adata : str
+        Path to AnnData .h5ad file with obs containing 'first_type' (cell type), 
+        'spot_class' (whether a cell is a singlet), and 'subregion'.
 
-def allinfo_addct(fn_allinfo, fn_CIDmap, fn_adata):
+    Returns
+    -------
+    None
+        Writes `<fn_allinfo>.filtered.labeled.gz` with same format.
+    """
+
     x = pd.read_csv(fn_allinfo, sep='\t', header=None, index_col=0)
     print('Number of reads:')
     print(len(x))
@@ -59,7 +92,24 @@ def allinfo_addct(fn_allinfo, fn_CIDmap, fn_adata):
 
     return 
 
-def create_auxiliary_files(fn_allinfo, output_dir):
+def create_auxiliary_files(
+    fn_allinfo: str,
+    output_dir: str
+) -> None:
+    """
+    Generate isoform ID mapping and counts-per-cluster files as input for scisorseqr.
+
+    Parameters
+    ----------
+    fn_allinfo : str
+        Path to labeled AllInfo TSV file (index_col=0, no header).
+    output_dir : str
+        Directory to write 'Iso-IsoID.csv' and 'NumIsoPerCluster' files.
+
+    Returns
+    -------
+    None
+    """
 
     ## Create output dir if needed
     Path(output_dir).mkdir(parents=True, exist_ok=True)
@@ -103,7 +153,21 @@ def create_auxiliary_files(fn_allinfo, output_dir):
     gene_reg_tr_count.iloc[:,[5,1,3]].to_csv(f'{output_dir}/NumIsoPerCluster',
                                              index=None, header=None, sep='\t')
     
-def readAllInfo(fn_allinfo):
+def readAllInfo(
+    fn_allinfo: str
+) -> pd.DataFrame:
+    """
+    Load and filter AllInfo table (remove 'None' isoforms).
+
+    Parameters
+    ----------
+    fn_allinfo : str
+        Path to AllInfo TSV (index_col=0, no header).
+
+    Returns
+    -------
+    pandas.DataFrame
+    """
 
     allinfo = pd.read_csv(fn_allinfo, index_col=0, 
                           sep='\t', header=None)
@@ -113,7 +177,30 @@ def readAllInfo(fn_allinfo):
 
     return allinfo
 
-def constructSparseMatrix(allinfo, fn_CIDmap, gene_isoform_count):
+def constructSparseMatrix(
+    allinfo: pd.DataFrame,
+    fn_CIDmap: str,
+    gene_isoform_count: pd.DataFrame
+) -> tuple[csr_matrix, list]:
+    """
+    Build a cell-by-isoform sparse matrix of relative expression values.
+
+    Parameters
+    ----------
+    allinfo : pandas.DataFrame
+        Filtered AllInfo with reads.
+    fn_CIDmap : str
+        Path to barcode-to-CellID mapping TSV.
+    gene_isoform_count : pandas.DataFrame
+        DataFrame with columns [Gene, Isoform, count].
+
+    Returns
+    -------
+    x_sparse : csr_matrix
+        Shape (n_cells, n_transcripts), values = PSI per cell.
+    gene_isoform_list : list of tuple
+        List of (Gene, Isoform) pairs matching matrix columns.
+    """
     
     CIDmap = pd.read_csv(fn_CIDmap, sep='\t').set_index('barcode')
     max_CellID = int(CIDmap['CellID-original'].max())
@@ -188,8 +275,48 @@ def constructSparseMatrix(allinfo, fn_CIDmap, gene_isoform_count):
 
     return x_sparse, gene_isoform_list
 
-def create_isoform_matrix(fn_allinfo, fn_CIDmap, fn_adata, output, mincells=50, mincellspergroup=20):
-    
+def create_isoform_matrix(
+    fn_allinfo: str,
+    fn_CIDmap: str,
+    fn_adata: str,
+    output: str,
+    mincells: int = 50,
+    mincellspergroup: int = 20
+) -> None:
+    """
+    Build and save a filtered cell by isoform sparse matrix for a single slide.
+
+    This function:
+    1. Loads read-level data via `readAllInfo`.
+    2. Filters genes with at least `mincells` total reads.
+    3. Filters isoforms with at least `mincellspergroup` reads.
+    4. Retains genes with ≥2 isoforms after filtering.
+    5. Constructs a cell-by-isoform sparse PSI matrix.
+    6. Filters matrix columns by the same cell count thresholds.
+    7. Saves:
+       - `X_sparse.npz`: CSR matrix of PSI values.
+       - `genes_isoforms.csv`: List of (Gene, Isoform) pairs.
+       - `labels.csv`: Cell metadata from AnnData.
+
+    Parameters
+    ----------
+    fn_allinfo : str
+        Path to labeled AllInfo TSV (filtered by `allinfo_addct`), index_col=0.
+    fn_CIDmap : str
+        Path to TSV mapping barcodes to original CellIDs.
+    fn_adata : str
+        Path to AnnData .h5ad file for cell ordering and labels.
+    output : str
+        Directory to write output files (`X_sparse.npz`, etc.).
+    mincells : int, default=50
+        Minimum total reads per isoform to keep a gene.
+    mincellspergroup : int, default=20
+        Minimum reads in high/low group per isoform to include.
+
+    Returns
+    -------
+    None
+    """
     allinfo = readAllInfo(fn_allinfo)
 
     # Filter for genes with enough counts
@@ -212,6 +339,11 @@ def create_isoform_matrix(fn_allinfo, fn_CIDmap, fn_adata, output, mincells=50, 
 
     x_sparse, gene_isoform_list = constructSparseMatrix(allinfo, fn_CIDmap, gene_isoform_count)
 
+    # Read adata to get the labels
+    adata = sc.read_h5ad(fn_adata)
+    labels = adata.obs
+    x_sparse = x_sparse[labels['CellID-original'].values.astype(int)]
+
     # Filter for mincells and mincellspergroup
     data = x_sparse.data
     high_mask = csr_matrix((data >= 0.5, x_sparse.indices, x_sparse.indptr), shape=x_sparse.shape)
@@ -226,10 +358,113 @@ def create_isoform_matrix(fn_allinfo, fn_CIDmap, fn_adata, output, mincells=50, 
     gene_isoform = np.array(gene_isoform_list)[keep]
     x_sparse = x_sparse[:,keep]
 
-    # Read adata and filter for correct cells
-    adata = sc.read_h5ad(fn_adata)
-    labels = adata.obs
-    x_sparse = x_sparse[labels['CellID-original'].values.astype(int)]
+    Path(output).mkdir(parents=True, exist_ok=True)
+    
+    save_npz(f"{output}/X_sparse.npz", x_sparse)
+    
+    # Save cell/exon labels
+    pd.DataFrame(gene_isoform).to_csv(f"{output}/genes_isoforms.csv", index=False, header=False)
+
+    # Save cell labels
+    labels.to_csv(f"{output}/labels.csv")
+    
+    return     
+
+def create_isoform_matrix_twoslides(
+    fn_allinfo_S1: str,
+    fn_allinfo_S2: str,
+    fn_CIDmap_S1: str,
+    fn_CIDmap_S2: str,
+    fn_adata_S1: str,
+    fn_adata_S2: str,
+    output: str,
+    mincells: int = 50,
+    mincellspergroup: int = 20
+) -> None:
+    """
+    Build and save a filtered cell by isoform sparse matrix combining two slides.
+
+    This function performs the same filtering and matrix construction as
+    `create_isoform_matrix`, but for two separate slides whose results
+    are then vertically concatenated:
+    1. Load and concatenate `readAllInfo` outputs for slide1 and slide2.
+    2. Apply gene and isoform read count filters.
+    3. Construct separate sparse matrices via `constructSparseMatrix`.
+    4. Subset each matrix by cell order from respective AnnData.
+    5. Vertically stack matrices and concatenate labels.
+    6. Apply cell-count filters on the combined matrix.
+    7. Save outputs similarly to single-slide version.
+
+    Parameters
+    ----------
+    fn_allinfo_S1, fn_allinfo_S2 : str
+        Paths to filtered AllInfo TSVs for slide1 and slide2.
+    fn_CIDmap_S1, fn_CIDmap_S2 : str
+        Paths to barcode-to-CellID TSVs for each slide.
+    fn_adata_S1, fn_adata_S2 : str
+        Paths to AnnData .h5ad files for each slide.
+    output : str
+        Directory to write output files (`X_sparse.npz`, etc.).
+    mincells : int, default=50
+        Minimum total reads per isoform to keep a gene.
+    mincellspergroup : int, default=20
+        Minimum reads in high/low group per isoform to include.
+
+    Returns
+    -------
+    None
+    """
+
+    allinfo_S1 = readAllInfo(fn_allinfo_S1)
+    allinfo_S2 = readAllInfo(fn_allinfo_S2)
+    allinfo = pd.concat((allinfo_S1, allinfo_S2), axis=0)
+
+    # Filter for genes with enough counts
+    gene_counts = allinfo.groupby([1]).size()
+    genes_tokeep = gene_counts[gene_counts >= mincells].index
+    allinfo = allinfo[allinfo[1].isin(genes_tokeep)]
+    
+    # Filter for potentially interesting isoforms
+    gene_isoform_count = allinfo.groupby([1, 11]).size().reset_index(name='count')
+    gene_isoform_count = gene_isoform_count[gene_isoform_count['count'] >= mincellspergroup]
+    
+    # Keep only genes with ≥2 isoforms left
+    multi_iso_genes = gene_isoform_count.groupby(1).filter(lambda x: len(x) >= 2)[1].unique()
+    gene_isoform_count = gene_isoform_count[gene_isoform_count[1].isin(multi_iso_genes)]
+    allinfo = allinfo[allinfo[1].isin(multi_iso_genes)]
+    
+    print(f'Potentially interesting isoforms (total): {len(gene_isoform_count)}')
+    num_novel_isoforms = gene_isoform_count[11].str.split('.', expand=True)[2].notna().sum()
+    print(f'Potentially interesting isoforms (novel): {num_novel_isoforms}')
+
+    x_sparse_S1, gene_isoform_list = constructSparseMatrix(allinfo_S1, fn_CIDmap_S1, gene_isoform_count)
+    x_sparse_S2, gene_isoform_list = constructSparseMatrix(allinfo_S2, fn_CIDmap_S2, gene_isoform_count)
+
+    # Read adata to get the labels
+    adata_S1 = sc.read_h5ad(fn_adata_S1)
+    labels_S1 = adata_S1.obs
+    x_sparse_S1 = x_sparse_S1[labels_S1['CellID-original'].values.astype(int)]
+
+    adata_S2 = sc.read_h5ad(fn_adata_S2)
+    labels_S2 = adata_S2.obs
+    x_sparse_S2 = x_sparse_S2[labels_S2['CellID-original'].values.astype(int)]
+    
+    x_sparse = vstack([x_sparse_S1, x_sparse_S2])
+    labels = pd.concat((labels_S1, labels_S2))
+
+    # Filter for mincells and mincellspergroup
+    data = x_sparse.data
+    high_mask = csr_matrix((data >= 0.5, x_sparse.indices, x_sparse.indptr), shape=x_sparse.shape)
+    low_mask = csr_matrix((data < 0.5, x_sparse.indices, x_sparse.indptr), shape=x_sparse.shape)
+    
+    high_counts = np.array(high_mask.sum(axis=0)).ravel()
+    low_counts = np.array(low_mask.sum(axis=0)).ravel()
+    total_counts = np.array(x_sparse.getnnz(axis=0)).ravel()
+    
+    keep = (high_counts >= mincellspergroup) & (low_counts >= mincellspergroup) & (total_counts >= mincells)
+
+    gene_isoform = np.array(gene_isoform_list)[keep]
+    x_sparse = x_sparse[:,keep]
 
     Path(output).mkdir(parents=True, exist_ok=True)
     
@@ -243,11 +478,38 @@ def create_isoform_matrix(fn_allinfo, fn_CIDmap, fn_adata, output, mincells=50, 
     
     return     
 
-def sparse2df(input_dir):
+
+def sparse2df(
+    input_dir: str
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """
+    Load a saved sparse isoform matrix into dense DataFrame form.
+
+    This function:
+    1. Reads `labels.csv` and `genes_isoforms.csv`.
+    2. Loads `X_sparse.npz` as a CSR matrix.
+    3. Converts zeros to NaN via a mask.
+    4. Returns:
+       - `x`: DataFrame of PSI values (cells × isoforms).
+       - `labels`: DataFrame of cell metadata.
+
+    Parameters
+    ----------
+    input_dir : str
+        Directory containing output files from `create_isoform_matrix*`.
+
+    Returns
+    -------
+    x : pandas.DataFrame
+        Cell-by-isoform relative expression matrix (NaN where zero counts).
+    labels : pandas.DataFrame
+        Cell metadata indexed by cell identifier.
+    """
 
     # Labels
     labels = pd.read_csv(f'{input_dir}/labels.csv',
                          index_col=0)
+    labels.index = labels.index.astype('str') + '_' + labels['sample']
 
     # Isoforms 
     isoforms=pd.read_csv(f'{input_dir}/genes_isoforms.csv',header=None).values.squeeze()

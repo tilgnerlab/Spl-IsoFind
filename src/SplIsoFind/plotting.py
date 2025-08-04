@@ -1,22 +1,81 @@
-import os
+# SPDX-License-Identifier: MIT
+"""
+Spatial plotting utilities for long-read spatial transcriptomics data.
 
+This module provides functions to visualize spatial transcriptomics data
+as hexbin overlays, read tree-traversal isoform results, and generate
+heatmap tiles with accompanying bar plots.
+"""
+import os
 import numpy as np
 import pandas as pd
 
 import matplotlib.pyplot as plt
-from matplotlib.colors import LinearSegmentedColormap
+from matplotlib.colors import LinearSegmentedColormap, Normalize
 from matplotlib.patches import Polygon
-from matplotlib.colors import Normalize
 from matplotlib import cm
 
 import seaborn as sns
 
-def spatial_hexplot(x, labels, imarray, varName, celltype, 
-                    hexsize=120, fig_size=(5,5), ax=None, plot_lim=None,
-                    alpha=1, cmap='viridis', show_colorbar=True,
-                    staining_max='grey', staining_min='white',
-                    linewidths=0.1):
+def spatial_hexplot(
+    x: pd.DataFrame,
+    labels: pd.DataFrame,
+    imarray,
+    varName: str,
+    celltype: str,
+    hexsize: int = 120,
+    fig_size: tuple = (5, 5),
+    ax=None,
+    plot_lim: tuple = None,
+    alpha: float = 1,
+    cmap='viridis',
+    show_colorbar: bool = True,
+    staining_max: str = 'grey',
+    staining_min: str = 'white',
+    linewidths: float = 0.1
+) -> plt.Axes:
+    """
+    Overlay a hexbin of relative isoform expression values on a background staining image.
 
+    Extracts values for `varName` from `x`, subsets by `celltype` if provided,
+    computes hexbin grid based on spot coordinates, and draws on `ax` or a new figure.
+
+    Parameters
+    ----------
+    x : pandas.DataFrame
+        Feature matrix of shape (n_cells, n_isoforms), with relative expression values between 0 and 1.
+    labels : pandas.DataFrame
+        Cell metadata with columns ['x','y','first_type','spot_class'].
+    imarray : array-like or None
+        Background image array; if None, only hexbin is shown.
+    varName : str
+        Name of the column in `x` to plot.
+    celltype : str
+        If non-empty, only spots of this `first_type` and singlets are used.
+    hexsize : int
+        Approximate pixel diameter for hexbin cells.
+    fig_size : tuple
+        Size of new figure if `ax` is None.
+    ax : matplotlib.axes.Axes or None
+        Axis to draw on; if None, a new one is created.
+    plot_lim : tuple (xmin, xmax, ymin, ymax) or None
+        If provided, crops both image and hex positions.
+    alpha : float
+        Transparency for background image overlay.
+    cmap : str or Colormap
+        Colormap for hexbin values.
+    show_colorbar : bool
+        Whether to display a colorbar labeled "Fraction".
+    staining_max, staining_min : color spec
+        Colors to map background image to.
+    linewidths : float
+        Width of edges between hex cells.
+
+    Returns
+    -------
+    ax : matplotlib.axes.Axes
+        Axis containing the hexbin overlay.
+    """
     # Subset data
     idx_var = np.where(x.columns == varName)[0][0]
     if celltype != '':
@@ -60,7 +119,7 @@ def spatial_hexplot(x, labels, imarray, varName, celltype,
 
     else:
         if imarray is not None:
-            ax.imshow(imarray, alpha=alpha, cmap=staining_cmap)
+            ax.imshow(imarray, alpha=alpha, cmap=staining_cmap, origin='lower')
         hb = ax.hexbin(x=labels['x'],
                        y=labels['y'],
                        C=x, cmap=cmap, gridsize=(g_x, g_y),
@@ -93,7 +152,34 @@ def spatial_hexplot(x, labels, imarray, varName, celltype,
 
     return ax
 
-def read_results(input_dir, dataset, region, celltype):
+def read_results(
+    input_dir: str,
+    dataset: str,
+    region: str,
+    celltype: str
+) -> pd.DataFrame:
+    """
+    Read and summarize isoform traversal results from scisorseqr output.
+
+    Parses `input_dir/dataset/res_scisorseqr/CellTypes_{celltype}_{region}/TreeTraversal_Iso/*/results.csv`,
+    counts total tests and significant hits per subdirectory.
+
+    Parameters
+    ----------
+    input_dir : str
+        Base directory for results.
+    dataset : str
+        Name of dataset subfolder.
+    region : str
+        Region identifier.
+    celltype : str
+        Cell type identifier.
+
+    Returns
+    -------
+    pandas.DataFrame
+        Columns: ['reg1','reg2','tested','sig','perc'].
+    """
 
     comp = f'{celltype}_{region}'
 
@@ -129,8 +215,26 @@ def read_results(input_dir, dataset, region, celltype):
     
     return res
 
-def get_countmatrix(res, region_map=None):
-    
+def get_countmatrix(
+    res: pd.DataFrame,
+    region_map: dict = None
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """
+    Build symmetric count and percent matrices from pairwise results.
+
+    Parameters
+    ----------
+    res : pandas.DataFrame
+        Output of `read_results`, with columns ['reg1','reg2','sig','perc'].
+    region_map : dict, optional
+        Mapping from raw region codes to display labels.
+
+    Returns
+    -------
+    count_matrix, percent_matrix : tuple of pandas.DataFrame
+        Square DataFrames indexed and columned by region names.
+    """
+
     # Get sorted list of unique regions
     regions = sorted(set(res['reg1']) | set(res['reg2']))
 
@@ -146,10 +250,6 @@ def get_countmatrix(res, region_map=None):
         percent_matrix.loc[r1, r2] = row['perc']
         percent_matrix.loc[r2, r1] = row['perc']
 
-    # Masking
-    mask_upper = np.triu(np.ones_like(count_matrix, dtype=bool), k=1)
-    mask_lower = np.tril(np.ones_like(count_matrix, dtype=bool), k=-1)
-
     if region_map != None:
         # Rename both axes of your matrices
         count_matrix.rename(index=region_map, columns=region_map, inplace=True)
@@ -157,8 +257,26 @@ def get_countmatrix(res, region_map=None):
 
     return count_matrix, percent_matrix
 
-def get_barplot_counts(allinfo, ct_comp_file):
-    
+def get_barplot_counts(
+    allinfo: pd.DataFrame,
+    ct_comp_file: str
+) -> pd.Series:
+    """
+    Sum read counts per group based on a cell-type composition file.
+
+    Parameters
+    ----------
+    allinfo : pandas.DataFrame
+        Raw info with subgroup IDs in column 2.
+    ct_comp_file : str
+        Path to tab-separated file mapping groups and subgroups.
+
+    Returns
+    -------
+    pandas.Series
+        Index = group names, values = total counts.
+    """
+
     allinfo_grouped = allinfo.groupby(2).size()
     allinfo_grouped = allinfo_grouped.reset_index()
     allinfo_grouped.columns = ['subgroup', 'count']
@@ -180,18 +298,69 @@ def get_barplot_counts(allinfo, ct_comp_file):
 
 
 # Adaptive text color based on background brightness
-def get_text_color(rgba):
+def get_text_color(rgba) -> str:
+    """
+    Choose black or white text based on background brightness.
+
+    Parameters
+    ----------
+    rgba : tuple
+        RGBA color tuple.
+
+    Returns
+    -------
+    str
+        'white' if brightness < 0.5 else 'black'.
+    """
     r, g, b, _ = rgba
     brightness = 0.299*r + 0.587*g + 0.114*b
     return 'white' if brightness < 0.5 else 'black'
 
-def plot_heatmap(input_dir, dataset, region, celltype, allinfo,
-                 region_map=None, region_map2=None,
-                 figsize=(4,4), cmap_count=cm.Oranges,
-                 cmap_percent = cm.Blues, fontsize_tiles=11, 
-                 fontsize_ticks=12,
-                 fn=None, vmax_count=None,
-                 vmax_perc=None):
+def plot_heatmap(
+    input_dir: str,
+    dataset: str,
+    region: str,
+    celltype: str,
+    allinfo: pd.DataFrame,
+    region_map: dict = None,
+    region_map2: dict = None,
+    figsize: tuple = (4, 4),
+    cmap_count=cm.Oranges,
+    cmap_percent=cm.Blues,
+    fontsize_tiles: int = 11,
+    fontsize_ticks: int = 12,
+    fn: str = None,
+    vmax_count=None,
+    vmax_perc=None
+) -> None:
+    """
+    Draw a lower-triangle heatmap with % and count triangles plus side barplot.
+
+    Parameters
+    ----------
+    input_dir : str
+        Base results directory.
+    dataset : str
+        Dataset subfolder.
+    region : str
+        Region identifier.
+    celltype : str
+        Cell type identifier.
+    allinfo : pandas.DataFrame
+        Raw info for barplot counts.
+    region_map, region_map2 : dict, optional
+        Mapping for region labels.
+    figsize : tuple
+        Figure size.
+    cmap_count, cmap_percent : Colormap
+        Colormaps for count and percent triangles.
+    fontsize_tiles, fontsize_ticks : int
+        Font sizes for tile text and ticks.
+    fn : str, optional
+        Path to save figure; if None, figure is shown and not saved.
+    vmax_count, vmax_perc : float, optional
+        Manual maximum for color normalization.
+    """
 
     res = read_results(input_dir=input_dir, 
                        dataset=dataset, 
@@ -200,10 +369,9 @@ def plot_heatmap(input_dir, dataset, region, celltype, allinfo,
     count_matrix, percent_matrix = get_countmatrix(res, region_map)
     read_counts_df = get_barplot_counts(allinfo=allinfo, 
                                         ct_comp_file=f'{input_dir}/ct_files/CellTypes_{celltype}_{region}')
-    if region_map != None:
-        read_counts_df = read_counts_df.rename(index=region_map)
+    if region_map2 != None:
+        read_counts_df = read_counts_df.rename(index=region_map2)
 
-    
     regions = count_matrix.index.tolist()
     n = len(regions)
 

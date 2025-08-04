@@ -1,0 +1,51 @@
+[build-system]
+requires = ["setuptools>=42", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "SplIsoFind"
+version = "0.1.3"
+description = "Spatial Isoform Finder detects spatially variable isoforms in long-read spatial data"
+readme = { file = "README.md", content-type = "text/markdown" }
+license = { file = "LICENSE" }
+authors = [
+  { name = "Lieke Michielsen", email = "lim4020@med.cornell.edu" }
+]
+
+keywords = ["spatial transcriptomics", "long read", "alternative splicing", "isoform"]
+classifiers = [
+  "Development Status :: 5 - Production/Stable",
+  "Intended Audience :: Science/Research",
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3.9",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Operating System :: POSIX :: Linux"
+]
+
+dependencies = [
+  "pandas>=1.1.2,<2.0.0",
+  "numpy>=1.19.2,<2.0.0",
+  "scanpy>=1.10.3",
+  "scipy",
+  "statsmodels",
+  "scikit-learn",
+  "libpysal",
+  "esda",
+  "tqdm",
+  "jupyter",
+  "matplotlib",
+  "seaborn"
+]
+
+[project.urls]
+"Homepage"       = "https://github.com/tilgnerlab/Spl-IsoFind"
+"Source Code"    = "https://github.com/tilgnerlab/Spl-IsoFind"
+"Documentation"  = "https://splisofind.readthedocs.io"
+"Issue Tracker"  = "https://github.com/tilgnerlab/Spl-IsoFind/issues"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
