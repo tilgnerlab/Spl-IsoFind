@@ -12,7 +12,7 @@ pip install SplIsoFind
 
 ### Tutorials
 
-The [tutorials](https://github.com/tilgnerlab/Spl-IsoFind/tree/main/tutorials) folder contains notebooks to run Spl-IsoFind on demo data. See the documentation for more information. The demo datasets can be downloaded here: 
+The [tutorials](https://github.com/tilgnerlab/Spl-IsoFind/tree/main/tutorials) folder contains notebooks to run Spl-IsoFind on demo data. See the documentation for more information. The demo datasets can be downloaded from [Zenodo](https://doi.org/10.5281/zenodo.16740333).
 
 For citation and further information please refer to our [preprint](https://www.biorxiv.org/content/10.1101/2025.06.25.661563v1).
 
