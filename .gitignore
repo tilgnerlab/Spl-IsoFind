@@ -27,3 +27,4 @@ src/SplIsoFind/__pycache__/moransI.cpython-39.pyc
 src/SplIsoFind/__pycache__/plotting.cpython-39.pyc
 src/SplIsoFind/__pycache__/preprocess.cpython-39.pyc
 src/SplIsoFind/__pycache__/spatially_variable.cpython-39.pyc
+data/
