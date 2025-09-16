@@ -6,10 +6,7 @@ demo/.ipynb_checkpoints/Version numbers-checkpoint.ipynb
 /demo/Code/__pycache__
 demo/.DS_Store
 /demo/Data
-build/lib/SplIsoFind/__init__.py
-build/lib/SplIsoFind/moransI.py
-build/lib/SplIsoFind/plotting.py
-build/lib/SplIsoFind/preprocess.py
+build/*
 dist/splisofind-0.1.1-py3-none-any.whl
 dist/splisofind-0.1.1.tar.gz
 dist/splisofind-0.1.2-py3-none-any.whl
@@ -31,3 +28,10 @@ data/
 data.zip
 .DS_Store
 .DS_Store
+demo/*
+.DS_Store
+.DS_Store
+SplIsoFind_environment.yml
+Version numbers.ipynb
+demo/Tutorial - moran's I.ipynb
+demo/Tutorial - moran's I.ipynb

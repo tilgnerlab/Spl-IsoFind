@@ -10,6 +10,8 @@ import os
 import numpy as np
 import pandas as pd
 
+from scipy.sparse import csr_matrix
+
 import matplotlib.pyplot as plt
 from matplotlib.colors import LinearSegmentedColormap, Normalize
 from matplotlib.patches import Polygon
@@ -20,9 +22,9 @@ import seaborn as sns
 def spatial_hexplot(
     x: pd.DataFrame,
     labels: pd.DataFrame,
-    imarray,
     varName: str,
-    celltype: str,
+    imarray=None,
+    celltype: str='',
     hexsize: int = 120,
     fig_size: tuple = (5, 5),
     ax=None,
@@ -46,10 +48,10 @@ def spatial_hexplot(
         Feature matrix of shape (n_cells, n_isoforms), with relative expression values between 0 and 1.
     labels : pandas.DataFrame
         Cell metadata with columns ['x','y','first_type','spot_class'].
-    imarray : array-like or None
-        Background image array; if None, only hexbin is shown.
     varName : str
         Name of the column in `x` to plot.
+    imarray : array-like or None
+        Background image array; if None, only hexbin is shown.
     celltype : str
         If non-empty, only spots of this `first_type` and singlets are used.
     hexsize : int
@@ -150,6 +152,61 @@ def spatial_hexplot(
     ax.set_xticks([])
     ax.set_yticks([])
 
+    return ax
+
+def spatial_hexplot_sparse(
+    x_sparse: csr_matrix,
+    labels: pd.DataFrame,
+    var_info: pd.DataFrame,
+    varName: str,
+    **kwargs
+) -> plt.Axes:
+    """
+    Wrapper for `spatial_hexplot` that handles sparse input.
+
+    Extracts the requested isoform column from a CSR sparse matrix and constructs a
+    DataFrame for compatibility with `spatial_hexplot`. Only explicitly stored
+    values (including explicit zeros) are included in the plot.
+
+    Parameters
+    ----------
+    x_sparse : scipy.sparse.csr_matrix
+        Sparse matrix of relative expression values (cells × isoforms).
+        Explicit zeros are retained, missing values are implicit.
+    
+    labels : pandas.DataFrame
+        Cell metadata indexed by cell IDs. Must contain columns ['x', 'y', 'first_type', 'spot_class'].
+    
+    var_info : pandas.DataFrame
+        Isoform metadata with at least a 'Transcript ID' column that matches `x_sparse` columns.
+    
+    varName : str
+        Name of the transcript to plot (must match a value in `var_info['Transcript ID']`).
+    
+    **kwargs :
+        All additional parameters are passed directly to `spatial_hexplot`
+        (e.g., imarray, fig_size, cmap, alpha, celltype, ax, etc).
+
+    Returns
+    -------
+    ax : matplotlib.axes.Axes
+        The axis with the hexbin overlay.
+    """
+    
+    idx_var = np.where(var_info['Transcript ID'] == varName)[0]
+
+    if len(idx_var) == 0:
+        raise ValueError(f"Transcript '{varName}' not found in var_info['Transcript ID'].")
+
+    x_sparse_transcript = x_sparse[:,idx_var]
+    idx_notNaN = x_sparse_transcript.tocoo().row
+    labels = labels.iloc[idx_notNaN]
+    x = pd.DataFrame(x_sparse_transcript[idx_notNaN].toarray(),
+                                index = labels.index,
+                                columns = var_info.values[idx_var,1])
+
+    ax = spatial_hexplot(x, labels, varName, **kwargs)
+    
     return ax
 
 def read_results(

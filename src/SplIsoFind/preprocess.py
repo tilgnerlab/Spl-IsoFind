@@ -530,3 +530,44 @@ def sparse2df(
                      columns=isoforms[:,1])
         
     return x, labels
+
+def load_sparse(
+    input_dir: str
+) -> tuple[csr_matrix, pd.DataFrame, pd.DataFrame]:
+    """
+    Load a saved sparse isoform matrix, labels, and genes/isoform mapping.
+
+    Parameters
+    ----------
+    input_dir : str
+        Directory containing output files from `create_isoform_matrix*`.
+        Expected files:
+            - X_sparse.npz: sparse matrix (cells × isoforms)
+            - labels.csv: cell metadata
+            - genes_isoforms.csv: isoform-to-gene mapping
+
+    Returns
+    -------
+    x : csr_matrix
+        Sparse matrix of cell-by-isoform relative expression.
+        Zeros are explicitly stored; missing values indicate NaNs.
+    labels : pandas.DataFrame
+        Cell metadata indexed by cell identifier.
+    gene_isoform : pandas.DataFrame
+        Gene and isoform identifiers (column metadata for `x_sparse`).
+        Expected columns: 'Gene ID', 'Transcript ID'.
+    """
+
+    # Labels
+    labels = pd.read_csv(f'{input_dir}/labels.csv',
+                         index_col=0)
+    labels.index = labels.index.astype('str') + '_' + labels['sample']
+
+    # Isoforms 
+    isoforms=pd.read_csv(f'{input_dir}/genes_isoforms.csv',header=None)
+    isoforms.columns = ['Gene ID', 'Transcript ID']
+    
+    # Data matrix
+    x_sparse = load_npz(f'{input_dir}/X_sparse.npz')
+        
+    return x_sparse, labels, isoforms
