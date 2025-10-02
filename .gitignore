@@ -35,3 +35,8 @@ SplIsoFind_environment.yml
 Version numbers.ipynb
 demo/Tutorial - moran's I.ipynb
 demo/Tutorial - moran's I.ipynb
+*.whl
+*.gz
+docs/notebooks/.ipynb_checkpoints/Tutorial - moran's I-checkpoint.ipynb
+docs/notebooks/.ipynb_checkpoints/Tutorial - plot examples-checkpoint.ipynb
+docs/notebooks/.ipynb_checkpoints/Tutorial - predefined regions-checkpoint.ipynb

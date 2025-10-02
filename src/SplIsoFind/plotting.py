@@ -25,6 +25,8 @@ def spatial_hexplot(
     varName: str,
     imarray=None,
     celltype: str='',
+    region: str='',
+    subregion: str='',
     hexsize: int = 120,
     fig_size: tuple = (5, 5),
     ax=None,
@@ -53,7 +55,11 @@ def spatial_hexplot(
     imarray : array-like or None
         Background image array; if None, only hexbin is shown.
     celltype : str
-        If non-empty, only spots of this `first_type` and singlets are used.
+        If non-empty, only spots of this `first_type` and singlets are shown.
+    region : str
+        If non-empty, only spots of this region are shown.
+    subregion : str
+        If non-empty, only spots of this subregion are shown.
     hexsize : int
         Approximate pixel diameter for hexbin cells.
     fig_size : tuple
@@ -88,8 +94,18 @@ def spatial_hexplot(
     else:
         x = x.iloc[:, idx_var]
 
-    if len(x.dropna()) == 0:
-        print('No data')
+    if region != '':
+        idx_reg = np.where(labels['region'] == region)[0]
+        x = x.iloc[idx_reg]
+        labels = labels.iloc[idx_reg]
+    
+    if subregion != '':
+        idx_subreg = np.where(labels['subregion'] == subregion)[0]
+        x = x.iloc[idx_subreg]
+        labels = labels.iloc[idx_subreg]
+
+    if len(x.dropna()) < 10: #Check whether we have enough cells to plot
+        print('Less than 10 cells to plot, skipping.')
         return None
 
     x = x.dropna()
