@@ -594,3 +594,99 @@ def plot_heatmap(
     if fn != None:
         plt.savefig(fn, bbox_inches='tight')
     plt.show()
+
+def barplot_psi(
+        x_sparse,
+        labels,
+        var_info,
+        varName,
+        celltype="", 
+        figsize=(6, 4),
+        color="gray"
+    ) -> plt.Figure:
+    """
+    Function to plot a barplot with mean PSI value per brain region.
+
+    Extracts the specified transcript column from the sparse PSI matrix
+    and computes mean PSI per region for singlets only and optionally
+    a given cell type.
+
+    Parameters
+    ----------
+    x_sparse : scipy.sparse.csr_matrix
+        Sparse PSI matrix (cells × isoforms).
+
+    labels : pandas.DataFrame
+        Cell metadata indexed by cell IDs. Must contain at least ['region', 'spot_class', 'first_type'].
+    
+    var_info : pandas.DataFrame
+        Isoform metadata with at least a 'Transcript ID' column that matches x_sparse columns.
+
+    varName : str
+        Name of the transcript to plot (must match a value in var_info['Transcript ID']).
+
+    celltype : str, optional
+        Filter for a specific cell type (matches labels['first_type']).
+        Default is "", meaning no filtering by cell type.
+
+    **kwargs :
+        Additional keyword arguments passed to psi_region_barplot,
+        e.g. figsize=(6,4), color='gray', etc.
+
+    Returns
+    -------
+    fig : matplotlib.figure.Figure
+        A bar plot showing mean PSI per region for singlets (and optionally per cell type).
+    """
+    
+    # Find transcript index
+    idx_var = np.where(var_info["Transcript ID"] == varName)[0]
+    if len(idx_var) == 0:
+        raise ValueError(f"Transcript '{varName}' not found in var_info['Transcript ID'].")
+
+    x_sparse_transcript = x_sparse[:, idx_var]
+    x_coo = x_sparse_transcript.tocoo()
+    psi_values = x_coo.data
+    idx_notNaN = x_coo.row
+    labels_nonzero = labels.iloc[idx_notNaN].copy()
+    labels_nonzero["PSI"] = psi_values
+
+    # Apply cell type filter (optional)
+    if celltype:
+        # Filter singlets
+        labels_nonzero = labels_nonzero[labels_nonzero["spot_class"] == "singlet"]
+        labels_nonzero = labels_nonzero[labels_nonzero["first_type"] == celltype]
+        if labels_nonzero.empty:
+            raise ValueError(f"No cells found for cell type '{celltype}'.")
+    if "region" not in labels_nonzero.columns:
+        raise ValueError("The labels DataFrame must contain a 'region' column.")
+
+    # Compute mean PSI per region and count of cells
+    df_summary = (
+        labels_nonzero.groupby("region", dropna=False)
+        .agg(
+            mean_PSI=("PSI", "mean"),
+            n_cells=("PSI", "size")
+        )
+        .reset_index()
+    )
+
+     # Keep only regions with >=10 cells
+    df_filtered = df_summary[df_summary["n_cells"] >= 10].sort_values("mean_PSI", ascending=False)
+    if df_filtered.empty:
+        raise ValueError("No regions with ≥10 singlet cells to plot.")
+    
+    # Draw bar chart
+    fig, ax = plt.subplots(figsize=figsize)
+    bars = ax.bar(df_filtered["region"], df_filtered["mean_PSI"], color=color, alpha=0.85)
+    ax.set_ylim(0, 1)
+    ax.set_ylabel("Mean PI")
+    title_suffix = f" ({celltype})" if celltype else ""
+    ax.set_title(f"Mean PI per region — {varName}{title_suffix}", fontsize=11)
+    ax.tick_params(axis="x", labelsize=9)
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+
+    plt.tight_layout()
+    plt.close(fig)
+    return fig
