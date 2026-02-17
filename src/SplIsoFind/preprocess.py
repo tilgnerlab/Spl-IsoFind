@@ -21,7 +21,9 @@ from scipy.sparse import csr_matrix, save_npz, load_npz, vstack
 def allinfo_addct(
     fn_allinfo: str,
     fn_CIDmap: str,
-    fn_adata: str
+    fn_adata: str,
+    fn_out: str = '',
+    filter_spliced: bool = True
 ) -> None:
     """
     Annotate raw read allinfo file with cell-type-region labels and save filtered file.
@@ -35,21 +37,26 @@ def allinfo_addct(
     fn_adata : str
         Path to AnnData .h5ad file with obs containing 'first_type' (cell type), 
         'spot_class' (whether a cell is a singlet), and 'subregion'.
+    fn_out : str
+        Filename to save the filtered and labeled allinfo file to (default = '') 
+    filter_spliced : bool, optional
+        Whether we filter the allinfo file for spliced reads (default = True).
 
     Returns
     -------
     None
-        Writes `<fn_allinfo>.filtered.labeled.gz` with same format.
+        Writes filtered and labeled allinfo file with same format.
     """
 
     x = pd.read_csv(fn_allinfo, sep='\t', header=None, index_col=0)
     print('Number of reads:')
     print(len(x))
 
-    # Remove genes with 0 exons in intron chain
-    x = x[x[10]>0]
-    print('Number of reads with at least 1 exon in intron chain:')
-    print(len(x))
+    if filter_spliced:
+        # Remove genes with 0 exons in intron chain
+        x = x[x[10]>0]
+        print('Number of reads with at least 1 splice junction:')
+        print(len(x))
 
     # Filter for reads overlapping segmented cells
     CIDmap = pd.read_csv(fn_CIDmap, sep='\t')
@@ -87,7 +94,7 @@ def allinfo_addct(
     print('Number of reads with label:')
     print(len(x_filt))
     
-    x_filt.to_csv(fn_allinfo[:-3]+'.filtered.labeled.gz', header=False, 
+    x_filt.to_csv(fn_out, header=False, 
                   sep='\t', index=True, compression='gzip')
 
     return 
@@ -121,6 +128,7 @@ def create_auxiliary_files(
     
     # Remove reads without isoform assigned
     allinfo = allinfo[allinfo[11] != 'None']
+    allinfo = allinfo[allinfo[11].notna()]
     print('Number of reads with isoform assigned:')
     print(len(allinfo))
     
@@ -571,3 +579,145 @@ def load_sparse(
     x_sparse = load_npz(f'{input_dir}/X_sparse.npz')
         
     return x_sparse, labels, isoforms
+
+
+
+def create_isoform_matrix_spot(
+    fn_allinfo: str,
+    fn_labels: str,
+    output: str,
+    mincells: int = 50,
+    mincellspergroup: int = 20
+):
+
+    allinfo = readAllInfo(fn_allinfo)
+
+    # ---- gene filter
+    gene_counts = allinfo.groupby(1).size()
+    genes_keep = gene_counts[gene_counts>=mincells].index
+    allinfo = allinfo[allinfo[1].isin(genes_keep)]
+
+    # ---- isoform filter
+    gene_isoform_count = (
+        allinfo.groupby([1,11])
+        .size()
+        .reset_index(name="count")
+    )
+    gene_isoform_count = gene_isoform_count[
+        gene_isoform_count["count"]>=mincellspergroup
+    ]
+
+    multi = (
+        gene_isoform_count.groupby(1)
+        .filter(lambda x: len(x)>=2)[1]
+        .unique()
+    )
+
+    gene_isoform_count = gene_isoform_count[
+        gene_isoform_count[1].isin(multi)
+    ]
+    allinfo = allinfo[allinfo[1].isin(multi)]
+
+    print(f"Potentially interesting isoforms: {len(gene_isoform_count)}")
+    num_novel_isoforms = gene_isoform_count[11].str.split('.', expand=True)[2].notna().sum()
+    print(f'Potentially interesting isoforms (novel): {num_novel_isoforms}')
+    
+    # ---- load labels
+    labels = pd.read_csv(fn_labels, index_col=0)
+    labels["barcode"] = labels.index.str.replace("-1","",regex=False)
+    barcodes = labels["barcode"].tolist()
+
+    # ---- build matrix
+    x_sparse, gene_isoform_list = constructSparseMatrix_spot(
+        allinfo,
+        gene_isoform_count,
+        barcodes
+    )
+
+    # ---- high / low PSI filtering
+    data = x_sparse.data
+    high_mask = csr_matrix((data>=0.5,
+                            x_sparse.indices,
+                            x_sparse.indptr),
+                           shape=x_sparse.shape)
+    low_mask = csr_matrix((data<0.5,
+                           x_sparse.indices,
+                           x_sparse.indptr),
+                          shape=x_sparse.shape)
+
+    high_counts = np.array(high_mask.sum(axis=0)).ravel()
+    low_counts  = np.array(low_mask.sum(axis=0)).ravel()
+    total_counts = np.array(x_sparse.getnnz(axis=0)).ravel()
+
+    keep = (
+        (high_counts>=mincellspergroup) &
+        (low_counts>=mincellspergroup) &
+        (total_counts>=mincells)
+    )
+
+    x_sparse = x_sparse[:,keep]
+    gene_isoform = np.array(gene_isoform_list)[keep]
+
+    # ---- save
+    Path(output).mkdir(parents=True, exist_ok=True)
+
+    save_npz(f"{output}/X_sparse.npz", x_sparse)
+    pd.DataFrame(gene_isoform).to_csv(
+        f"{output}/genes_isoforms.csv",
+        index=False, header=False
+    )
+    labels.to_csv(f"{output}/labels.csv")
+
+    return
+
+
+def constructSparseMatrix_spot(
+    allinfo: pd.DataFrame,
+    gene_isoform_count: pd.DataFrame,
+    barcodes: list
+):
+
+    barcode_to_idx = {bc:i for i,bc in enumerate(barcodes)}
+
+    gene_isoform_list = list(gene_isoform_count.set_index([1,11]).index)
+    gene_isoform_to_idx = {p:j for j,p in enumerate(gene_isoform_list)}
+
+    grouped = allinfo.groupby([1,11,3]).size().reset_index(name="count")
+
+    inc_dict = defaultdict(dict)
+    exc_dict = defaultdict(dict)
+
+    for g,t,bc,c in grouped.itertuples(index=False):
+        if bc in barcode_to_idx:
+            inc_dict[(g,t)][bc] = c
+
+    for (g,t), bc_counts in inc_dict.items():
+        other_ts = [tt for (gg,tt) in inc_dict if gg==g and tt!=t]
+        exc = defaultdict(int)
+        for tt in other_ts:
+            for bc,c in inc_dict[(g,tt)].items():
+                exc[bc]+=c
+        exc_dict[(g,t)] = exc
+
+    x_data, x_row, x_col = [], [], []
+
+    for (g,t), inc_bc in tqdm(inc_dict.items()):
+        if (g,t) not in gene_isoform_to_idx:
+            continue
+
+        j = gene_isoform_to_idx[(g,t)]
+        exc_bc = exc_dict.get((g,t),{})
+
+        for bc in set(inc_bc)|set(exc_bc):
+            inc = inc_bc.get(bc,0)
+            exc = exc_bc.get(bc,0)
+            tot = inc+exc
+            if tot>0:
+                x_data.append(inc/tot)
+                x_row.append(barcode_to_idx[bc])
+                x_col.append(j)
+
+    x_sparse = csr_matrix((x_data,(x_row,x_col)),
+                          shape=(len(barcodes), len(gene_isoform_list)))
+
+    return x_sparse, gene_isoform_list

@@ -27,6 +27,8 @@ def spatial_hexplot(
     celltype: str='',
     region: str='',
     subregion: str='',
+    x_coord: str='x',
+    y_coord: str='y',
     hexsize: int = 120,
     fig_size: tuple = (5, 5),
     ax=None,
@@ -60,6 +62,8 @@ def spatial_hexplot(
         If non-empty, only spots of this region are shown.
     subregion : str
         If non-empty, only spots of this subregion are shown.
+    x_coord, y_coord : str
+        Column names in `labels` for spatial coordinates.
     hexsize : int
         Approximate pixel diameter for hexbin cells.
     fig_size : tuple
@@ -111,10 +115,10 @@ def spatial_hexplot(
     x = x.dropna()
     labels = labels.loc[x.index]
     
-    g_x = int(np.sqrt(3) * ((labels['x'].values.max() -
-                             labels['x'].values.min())) / hexsize)
-    g_y = int((labels['y'].values.max() -
-               labels['y'].values.min()) / hexsize)
+    g_x = int(np.sqrt(3) * ((labels[x_coord].values.max() -
+                             labels[x_coord].values.min())) / hexsize)
+    g_y = int((labels[y_coord].values.max() -
+               labels[y_coord].values.min()) / hexsize)
 
     staining_cmap = LinearSegmentedColormap.from_list("white_to_grey", [staining_min, staining_max])
     
@@ -128,8 +132,8 @@ def spatial_hexplot(
             ax.imshow(imarray[plot_lim[2]:plot_lim[3],plot_lim[0]:plot_lim[1]], alpha=alpha, cmap=staining_cmap)
         ax.set_xlim([0, plot_lim[1]-plot_lim[0]])
         ax.set_ylim([0, plot_lim[3]-plot_lim[2]])
-        hb = ax.hexbin(x=labels['x']-plot_lim[0],
-            y=labels['y']-plot_lim[2],
+        hb = ax.hexbin(x=labels[x_coord]-plot_lim[0],
+            y=labels[y_coord]-plot_lim[2],
             C=x, cmap=cmap, gridsize=(g_x, g_y),
             reduce_C_function=np.mean, vmin=0, vmax=1, rasterized=True,
             edgecolors='white',
@@ -138,8 +142,8 @@ def spatial_hexplot(
     else:
         if imarray is not None:
             ax.imshow(imarray, alpha=alpha, cmap=staining_cmap, origin='lower')
-        hb = ax.hexbin(x=labels['x'],
-                       y=labels['y'],
+        hb = ax.hexbin(x=labels[x_coord],
+                       y=labels[y_coord],
                        C=x, cmap=cmap, gridsize=(g_x, g_y),
                        reduce_C_function=np.mean, vmin=0, vmax=1, rasterized=True,
                        edgecolors='white',
@@ -290,7 +294,8 @@ def read_results(
 
 def get_countmatrix(
     res: pd.DataFrame,
-    region_map: dict = None
+    region_map: dict = None,
+    regions_keep: list = None
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """
     Build symmetric count and percent matrices from pairwise results.
@@ -307,6 +312,13 @@ def get_countmatrix(
     count_matrix, percent_matrix : tuple of pandas.DataFrame
         Square DataFrames indexed and columned by region names.
     """
+
+    if regions_keep is not None:
+        res = res[
+            res["reg1"].isin(regions_keep) &
+            res["reg2"].isin(regions_keep)
+        ]
+
 
     # Get sorted list of unique regions
     regions = sorted(set(res['reg1']) | set(res['reg2']))
@@ -397,6 +409,7 @@ def plot_heatmap(
     allinfo: pd.DataFrame,
     region_map: dict = None,
     region_map2: dict = None,
+    regions_keep: list = None,   
     figsize: tuple = (4, 4),
     cmap_count=cm.Oranges,
     cmap_percent=cm.Blues,
@@ -439,9 +452,13 @@ def plot_heatmap(
                        dataset=dataset, 
                        region=region, 
                        celltype=celltype)
-    count_matrix, percent_matrix = get_countmatrix(res, region_map)
+    count_matrix, percent_matrix = get_countmatrix(res, region_map, regions_keep)
     read_counts_df = get_barplot_counts(allinfo=allinfo, 
                                         ct_comp_file=f'{input_dir}/ct_files/CellTypes_{celltype}_{region}')
+
+    if regions_keep is not None:
+        read_counts_df = read_counts_df.loc[read_counts_df.index.isin(regions_keep)]
+
     if region_map2 != None:
         read_counts_df = read_counts_df.rename(index=region_map2)
 
@@ -595,7 +612,7 @@ def plot_heatmap(
         plt.savefig(fn, bbox_inches='tight')
     plt.show()
 
-def barplot_psi(
+def barplot_pi(
         x_sparse,
         labels,
         var_info,
@@ -605,7 +622,7 @@ def barplot_psi(
         color="gray"
     ) -> plt.Figure:
     """
-    Function to plot a barplot with mean PSI value per brain region.
+    Function to plot a barplot with mean PI value of that isoform per brain region.
 
     Extracts the specified transcript column from the sparse PSI matrix
     and computes mean PSI per region for singlets only and optionally
@@ -646,10 +663,10 @@ def barplot_psi(
 
     x_sparse_transcript = x_sparse[:, idx_var]
     x_coo = x_sparse_transcript.tocoo()
-    psi_values = x_coo.data
+    pi_values = x_coo.data
     idx_notNaN = x_coo.row
     labels_nonzero = labels.iloc[idx_notNaN].copy()
-    labels_nonzero["PSI"] = psi_values
+    labels_nonzero["PI"] = pi_values
 
     # Apply cell type filter (optional)
     if celltype:
@@ -661,7 +678,7 @@ def barplot_psi(
     if "region" not in labels_nonzero.columns:
         raise ValueError("The labels DataFrame must contain a 'region' column.")
 
-    # Compute mean PSI per region and count of cells
+    # Compute mean PI per region and count of cells
     df_summary = (
         labels_nonzero.groupby("region", dropna=False)
         .agg(
@@ -689,4 +706,7 @@ def barplot_psi(
 
     plt.tight_layout()
     plt.close(fig)
-    return fig
+    return ax
+
+
+    

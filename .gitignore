@@ -40,3 +40,6 @@ demo/Tutorial - moran's I.ipynb
 docs/notebooks/.ipynb_checkpoints/Tutorial - moran's I-checkpoint.ipynb
 docs/notebooks/.ipynb_checkpoints/Tutorial - plot examples-checkpoint.ipynb
 docs/notebooks/.ipynb_checkpoints/Tutorial - predefined regions-checkpoint.ipynb
+src/SplIsoFind/.ipynb_checkpoints/plotting-checkpoint.py
+src/SplIsoFind/.ipynb_checkpoints/preprocess-checkpoint.py
+src/SplIsoFind/.ipynb_checkpoints/spatially_variable-checkpoint.py
