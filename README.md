@@ -14,7 +14,7 @@ Installation normally should not take more than 5 minutes.
 
 ### Tutorials
 
-The [tutorials](https://github.com/tilgnerlab/Spl-IsoFind/tree/main/tutorials) folder contains notebooks to run Spl-IsoFind on demo data. See the documentation for more information. The demo datasets can be downloaded from [Zenodo](https://doi.org/10.5281/zenodo.16740333).
+The [tutorials](https://github.com/tilgnerlab/Spl-IsoFind/tree/main/tutorials) folder contains notebooks to run Spl-IsoFind on demo data. See the documentation for more information. The demo datasets can be downloaded from [Zenodo](https://doi.org/10.5281/zenodo.16740333). Running the tutorials should not take more than 30 minutes.
 
 Full documentation can be found [here](https://spl-isofind.readthedocs.io/en/latest/).
 
