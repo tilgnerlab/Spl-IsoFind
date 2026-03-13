@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "SplIsoFind"
-version = "0.1.7"
+version = "0.1.8"
 description = "Spatial Isoform Finder detects spatially variable isoforms in long-read spatial data"
 readme = { file = "README.md", content-type = "text/markdown" }
 license = { file = "LICENSE" }
@@ -33,10 +33,10 @@ dependencies = [
   "libpysal",
   "esda",
   "tqdm",
+  "tqdm_joblib",
   "jupyter",
   "matplotlib",
-  "seaborn",
-  "tqdm-joblib"
+  "seaborn"
 ]
 
 [project.urls]
