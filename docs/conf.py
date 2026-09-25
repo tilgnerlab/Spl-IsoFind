@@ -4,7 +4,11 @@ sys.path.insert(0, os.path.abspath("../src"))  # adjust if using top-level layou
 
 project = "SplIsoFind"
 author = "Lieke Michielsen"
-release = "0.1.0"
+try:
+    from importlib.metadata import version as _version
+    release = _version("SplIsoFind")
+except Exception:
+    release = "unknown"
 
 extensions = [
     "sphinx.ext.autodoc",

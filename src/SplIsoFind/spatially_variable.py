@@ -11,7 +11,7 @@ import pandas as pd
 import numpy as np
 from joblib import Parallel, delayed
 
-from tqdm.notebook import tqdm
+from tqdm.auto import tqdm
 from tqdm_joblib import tqdm_joblib
 
 from statsmodels.stats.multitest import fdrcorrection
@@ -114,9 +114,9 @@ def moransI(
     
     # BY FDR correction
     for ct in celltypes:
-        tocorrect = pval[ct][pval[ct].notna()]
-        _, q = fdrcorrection(tocorrect, method='n')
-        qval[ct][pval[ct].notna()] = q
+        tested = pval[ct].notna()
+        _, q = fdrcorrection(pval.loc[tested, ct], method='n')
+        qval.loc[tested, ct] = q
 
     # Save files
     if output_dir:
@@ -250,9 +250,9 @@ def moransI_sparse(
     
     # BY FDR correction
     for ct in celltypes:
-        tocorrect = pval[ct][pval[ct].notna()]
-        _, q = fdrcorrection(tocorrect, method='n')
-        qval[ct][pval[ct].notna()] = q
+        tested = pval[ct].notna()
+        _, q = fdrcorrection(pval.loc[tested, ct], method='n')
+        qval.loc[tested, ct] = q
 
     # Save files
     if output_dir:
@@ -439,7 +439,7 @@ def moransI_ctperm(
             for i in tqdm(var_order, desc="Moran's I with ct-constrained perm.")
         ]
     else:
-        with tqdm_joblib(desc="Moran's I with ct-constrained perm.", total=len(variables)):
+        with tqdm_joblib(desc="Moran's I with ct-constrained perm.", total=len(var_order)):
             results = Parallel(n_jobs=n_jobs, backend="loky")(
                 delayed(_compute_ctperm_for_variable)(
                     i, x[i],
@@ -592,6 +592,7 @@ def _compute_ctperm_for_variable(
     second_type = labels_i['second_type'].values.copy()
     doublet_certain_mask = spot_class == 'doublet_certain'
     cts = np.unique(first_type)
+    x_vals = x_i.to_numpy()
 
     for _ in range(nperm):
         # Probabilistic reassignment of doublets
@@ -603,10 +604,10 @@ def _compute_ctperm_for_variable(
         )
 
         # Cell-type constrained permutation
-        x_i_temp = x_i.copy()
+        x_i_temp = x_vals.copy()
         for ct in cts:
             idx_ct = np.where(first_type == ct)[0]
-            x_i_temp.iloc[idx_ct] = np.random.permutation(x_i_temp.iloc[idx_ct])
+            x_i_temp[idx_ct] = np.random.permutation(x_i_temp[idx_ct])
 
         # Moran without internal permutations
         res_perm = esda.Moran(x_i_temp, w_i, permutations=0, transformation='b')

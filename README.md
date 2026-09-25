@@ -4,10 +4,16 @@ Spl-IsoFind can be used to detect spatially variable isoforms in long-read spati
 
 ### Installation
 
-Spl-IsoFind requires Python 3.9 or higher. The easiest way to install is through the following command:
+Spl-IsoFind requires Python 3.10 or higher. The easiest way to install is through the following command:
 
 ```
 pip install SplIsoFind
+```
+
+To also install the packages used in the tutorials (Jupyter, seaborn, Pillow), use:
+
+```
+pip install "SplIsoFind[tutorials]"
 ```
 
 Installation normally should not take more than 5 minutes. 

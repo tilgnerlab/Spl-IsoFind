@@ -17,8 +17,6 @@ from matplotlib.colors import LinearSegmentedColormap, Normalize
 from matplotlib.patches import Polygon
 from matplotlib import cm
 
-import seaborn as sns
-
 def spatial_hexplot(
     x: pd.DataFrame,
     labels: pd.DataFrame,
@@ -168,7 +166,8 @@ def spatial_hexplot(
     title = f"{celltype}\n{varName}" if celltype else varName
     ax.set_title(title)
     ax.set_aspect('equal')
-    sns.despine(ax=ax, top=True, right=True, left=True, bottom=True)
+    for spine in ax.spines.values():
+        spine.set_visible(False)
     ax.set_xticks([])
     ax.set_yticks([])
 
@@ -263,15 +262,19 @@ def read_results(
     res_dir = f'{input_dir}/{dataset}/res_scisorseqr/CellTypes_{comp}'
     res_dir += '/TreeTraversal_Iso'
 
-    res = pd.DataFrame(columns=['reg1','reg2','tested','sig'])
+    rows = []
 
     for subdir in os.listdir(res_dir):
 
         res_dir2 = f'{res_dir}/{subdir}/'
-        files = np.array(os.listdir(res_dir2))
+        if not os.path.isdir(res_dir2):
+            continue
+        res_files = [f for f in os.listdir(res_dir2) if f.endswith('results.csv')]
+        if not res_files:
+            continue
 
         try:
-            res_file = f"{res_dir2}/{files[np.char.endswith(files, 'results.csv')][0]}"
+            res_file = f"{res_dir2}/{res_files[0]}"
 
             x = pd.read_csv(res_file, sep='\t')
             sig = ((x['FDR'] <= 0.05) & (np.abs(x['dPI']) >= 0.1)).sum()
@@ -281,12 +284,12 @@ def read_results(
             reg1 = temp[0]
             reg2 = temp[1]
 
-            res2 = pd.DataFrame(data=np.reshape([reg1, reg2, n, sig], (1,4)), 
-                                columns=['reg1','reg2','tested','sig'])
-            res = pd.concat((res,res2), axis=0)
-        except:
+            rows.append((reg1, reg2, n, sig))
+        except (IndexError, KeyError, pd.errors.ParserError, pd.errors.EmptyDataError):
+            # unreadable results file or unexpected subdirectory name
             pass
 
+    res = pd.DataFrame(rows, columns=['reg1','reg2','tested','sig'])
     res = res.astype({"tested": int, "sig": int})
     res['perc'] = 100*res['sig']/res['tested']
     
@@ -666,7 +669,7 @@ def barplot_pi(
     pi_values = x_coo.data
     idx_notNaN = x_coo.row
     labels_nonzero = labels.iloc[idx_notNaN].copy()
-    labels_nonzero["PI"] = pi_values
+    labels_nonzero["PSI"] = pi_values
 
     # Apply cell type filter (optional)
     if celltype:
