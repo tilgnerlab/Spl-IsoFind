@@ -161,3 +161,53 @@ def test_read_results(tmp_path):
     assert res.loc[('A', 'B'), 'sig'] == 1
     assert res.loc[('A', 'C'), 'perc'] == 100
     assert len(res) == 2
+
+
+# cell-type constrained permutation -------------------------------------------
+
+def test_doublet_reassignment_is_redrawn_each_permutation():
+    # regression: reassignments used to accumulate, so after ~20 permutations
+    # nearly every doublet carried its second type
+    from SplIsoFind.spatially_variable import _draw_cell_types
+    n = 2000
+    first = np.array(['A'] * n, dtype=object)
+    second = np.array(['B'] * n, dtype=object)
+    weight = np.full(n, 0.7)
+    doublet = np.arange(n) % 2 == 0
+    rng = np.random.default_rng(0)
+    fractions = []
+    for _ in range(200):
+        ct = _draw_cell_types(first, second, weight, doublet, rng)
+        assert (ct[~doublet] == 'A').all()      # singlets never change
+        fractions.append((ct[doublet] == 'B').mean())
+    assert np.mean(fractions) == pytest.approx(0.3, abs=0.01)
+    assert fractions[-1] == pytest.approx(0.3, abs=0.05)
+    assert (first == 'A').all()                 # inputs are not modified
+
+
+def test_permutation_covers_types_only_seen_as_second_type():
+    # regression: types were fixed from first_type before reassignment, so
+    # cells reassigned to a type absent from first_type were never shuffled
+    from SplIsoFind.spatially_variable import _permute_within_types
+    x = np.arange(100, dtype=float)
+    cell_type = np.array(['A'] * 50 + ['Rare'] * 50, dtype=object)
+    rng = np.random.default_rng(0)
+    xp = _permute_within_types(x, cell_type, rng)
+    assert sorted(xp[:50]) == list(x[:50])      # values stay within their type
+    assert sorted(xp[50:]) == list(x[50:])
+    assert not np.array_equal(xp[50:], x[50:])  # but 'Rare' cells are shuffled
+
+
+def test_moransI_ctperm_reproducible(matrix):
+    x, labels, isoforms = SplIsoFind.pp.load_sparse(str(matrix))
+    kw = dict(var_totest=['T1.1', 'T2.1'], nperm=49)
+    a = SplIsoFind.sv.moransI_ctperm_sparse(x, labels, isoforms, n_jobs=1, seed=3, **kw)
+    b = SplIsoFind.sv.moransI_ctperm_sparse(x, labels, isoforms, n_jobs=2, seed=3, **kw)
+    c = SplIsoFind.sv.moransI_ctperm_sparse(x, labels, isoforms, n_jobs=1, seed=3,
+                                            var_totest=['T2.1', 'T1.1'], nperm=49)
+    pd.testing.assert_frame_equal(a, b)
+    pd.testing.assert_frame_equal(a.sort_index(), c.sort_index())
+
+    x_df, labels_df = SplIsoFind.pp.sparse2df(str(matrix))
+    d = SplIsoFind.sv.moransI_ctperm(x_df, labels_df, n_jobs=1, seed=3, **kw)
+    pd.testing.assert_frame_equal(a.sort_index(), d.sort_index())
