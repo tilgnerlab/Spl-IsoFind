@@ -355,6 +355,12 @@ def _calculate_weight_matrix_sklearn(
     """
     Build a libpysal spatial weights matrix via k-nearest neighbors.
 
+    Neighbors are ordered by distance and then by cell position, so when
+    several cells are equally far away the choice is the same on every
+    machine (a kd-tree may resolve such ties differently depending on the
+    platform or library build). A cell is never its own neighbor, even when
+    other cells share its coordinates.
+
     Parameters
     ----------
     locations : pandas.DataFrame
@@ -367,17 +373,34 @@ def _calculate_weight_matrix_sklearn(
     W
         libpysal.weights.W object with equal weights to k neighbors.
     """
+    loc = np.asarray(locations, dtype=float)
+    n = len(loc)
+    rows = np.arange(n)[:, None]
+    nn = NearestNeighbors().fit(loc)
 
-    # Fit nearest neighbors model
-    # k+1 cause we will remove the diagonal afterwards
-    nn = NearestNeighbors(n_neighbors=k+1, algorithm='auto').fit(locations)
-    
-    # Find k-nearest neighbors (distances and indices)
-    _, indices = nn.kneighbors(locations)
-    
+    # Ask for a few extra candidates so that ties at the k-th neighbor are
+    # all included; widen the search if a tie reaches the last candidate.
+    m = min(n, k + 6)
+    while True:
+        _, cand = nn.kneighbors(loc, n_neighbors=m)
+        # exact squared distances, so equal distances compare equal
+        d2 = ((loc[cand] - loc[:, None, :]) ** 2).sum(axis=-1)
+        d2[cand == rows] = np.inf                      # drop self
+        order = np.lexsort((cand, d2), axis=-1)        # by distance, then index
+        cand = np.take_along_axis(cand, order, axis=-1)
+        d2 = np.take_along_axis(d2, order, axis=-1)
+        # the kth neighbor is at position k-1; ties may continue past the
+        # candidates only if the last finite candidate is equally far
+        last = np.where(np.isinf(d2[:, -1]), d2[:, -2], d2[:, -1])
+        if m == n or not np.any(d2[:, k - 1] == last):
+            break
+        m = min(n, 2 * m)
+
+    indices = cand[:, :k]
+
     # Convert to libpysal object
-    neighbors = {i: list(indices[i, 1:]) for i in range(indices.shape[0])}  # Remove self-reference
-    weights = {i: [1] * len(neighbors[i]) for i in neighbors}  # Assign equal weights
+    neighbors = {i: list(indices[i]) for i in range(n)}
+    weights = {i: [1] * k for i in neighbors}  # Assign equal weights
 
     return W(neighbors, weights)
 
