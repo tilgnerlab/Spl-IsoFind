@@ -355,6 +355,12 @@ def _calculate_weight_matrix_sklearn(
     """
     Build a libpysal spatial weights matrix via k-nearest neighbors.
 
+    Neighbors are ordered by distance and then by cell position, so when
+    several cells are equally far away the choice is the same on every
+    machine (a kd-tree may resolve such ties differently depending on the
+    platform or library build). A cell is never its own neighbor, even when
+    other cells share its coordinates.
+
     Parameters
     ----------
     locations : pandas.DataFrame
@@ -367,17 +373,34 @@ def _calculate_weight_matrix_sklearn(
     W
         libpysal.weights.W object with equal weights to k neighbors.
     """
+    loc = np.asarray(locations, dtype=float)
+    n = len(loc)
+    rows = np.arange(n)[:, None]
+    nn = NearestNeighbors().fit(loc)
 
-    # Fit nearest neighbors model
-    # k+1 cause we will remove the diagonal afterwards
-    nn = NearestNeighbors(n_neighbors=k+1, algorithm='auto').fit(locations)
-    
-    # Find k-nearest neighbors (distances and indices)
-    _, indices = nn.kneighbors(locations)
-    
+    # Ask for a few extra candidates so that ties at the k-th neighbor are
+    # all included; widen the search if a tie reaches the last candidate.
+    m = min(n, k + 6)
+    while True:
+        _, cand = nn.kneighbors(loc, n_neighbors=m)
+        # exact squared distances, so equal distances compare equal
+        d2 = ((loc[cand] - loc[:, None, :]) ** 2).sum(axis=-1)
+        d2[cand == rows] = np.inf                      # drop self
+        order = np.lexsort((cand, d2), axis=-1)        # by distance, then index
+        cand = np.take_along_axis(cand, order, axis=-1)
+        d2 = np.take_along_axis(d2, order, axis=-1)
+        # the kth neighbor is at position k-1; ties may continue past the
+        # candidates only if the last finite candidate is equally far
+        last = np.where(np.isinf(d2[:, -1]), d2[:, -2], d2[:, -1])
+        if m == n or not np.any(d2[:, k - 1] == last):
+            break
+        m = min(n, 2 * m)
+
+    indices = cand[:, :k]
+
     # Convert to libpysal object
-    neighbors = {i: list(indices[i, 1:]) for i in range(indices.shape[0])}  # Remove self-reference
-    weights = {i: [1] * len(neighbors[i]) for i in neighbors}  # Assign equal weights
+    neighbors = {i: list(indices[i]) for i in range(n)}
+    weights = {i: [1] * k for i in neighbors}  # Assign equal weights
 
     return W(neighbors, weights)
 
@@ -391,7 +414,8 @@ def moransI_ctperm(
     x_coord: str = 'x',
     y_coord: str = 'y',
     output_dir: str = '',
-    n_jobs: int = 1
+    n_jobs: int = 1,
+    seed: int = 0
 ) -> pd.DataFrame:
     """
     Compute Moran's I with cell-type constrained permutation.
@@ -418,6 +442,9 @@ def moransI_ctperm(
         Directory path to save result as CSV files.
     n_jobs : int
         Number of parallel workers.
+    seed : int, default=0
+        Base seed. Each variable uses ``seed`` plus its column position in
+        `x`, so results do not depend on `n_jobs` or on `var_totest` order.
 
     Returns
     -------
@@ -434,7 +461,8 @@ def moransI_ctperm(
             _compute_ctperm_for_variable(
                     i, x[i],
                     labels, nperm, 
-                    k, x_coord, y_coord
+                    k, x_coord, y_coord,
+                    seed + x.columns.get_loc(i)
             )
             for i in tqdm(var_order, desc="Moran's I with ct-constrained perm.")
         ]
@@ -444,7 +472,8 @@ def moransI_ctperm(
                 delayed(_compute_ctperm_for_variable)(
                     i, x[i],
                     labels, nperm, 
-                    k, x_coord, y_coord
+                    k, x_coord, y_coord,
+                    seed + x.columns.get_loc(i)
                 )
                 for i in var_order
             )
@@ -475,7 +504,8 @@ def moransI_ctperm_sparse(
     x_coord: str = 'x',
     y_coord: str = 'y',
     output_dir: str = '',
-    n_jobs: int = 1
+    n_jobs: int = 1,
+    seed: int = 0
 ) -> pd.DataFrame:
     """
     Compute Moran's I with cell-type constrained permutation using sparse input matrix.
@@ -506,6 +536,9 @@ def moransI_ctperm_sparse(
         Directory path to save result as CSV files.
     n_jobs : int
         Number of parallel workers.
+    seed : int, default=0
+        Base seed. Each isoform uses ``seed`` plus its column index in
+        `x_sparse`, so results do not depend on `n_jobs` or on `var_totest` order.
 
     Returns
     -------
@@ -532,7 +565,8 @@ def moransI_ctperm_sparse(
 
         return _compute_ctperm_for_variable(
             var_name, x_sub, labels_sub,
-            nperm, k, x_coord, y_coord
+            nperm, k, x_coord, y_coord,
+            seed + col_idx
         )
 
     if n_jobs == 1:
@@ -565,10 +599,17 @@ def moransI_ctperm_sparse(
     
 
 def _compute_ctperm_for_variable(
-    i, x_i, labels, nperm, k, x_coord, y_coord
+    i, x_i, labels, nperm, k, x_coord, y_coord, seed=None
 ):
-    perm_I = []
+    """
+    Moran's I of one variable with two permutation tests.
 
+    The original test shuffles values over all cells. The constrained test
+    only shuffles values among cells of the same cell type. In every
+    constrained permutation each ``doublet_certain`` cell is independently
+    (re)assigned to its ``second_type`` with probability
+    ``1 - first_type_weight``, starting from its original ``first_type``.
+    """
     x_i = x_i.dropna()
     labels_i = labels.loc[x_i.index]
 
@@ -580,41 +621,58 @@ def _compute_ctperm_for_variable(
     imbalance = (x_i < 0.5).sum() / len(x_i)
 
     # Compute original Moran's I and permutation p-value
+    # (esda draws its permutations from numpy's global random state)
+    if seed is not None:
+        np.random.seed(seed)
     w_i = _calculate_weight_matrix_sklearn(labels_i[[x_coord, y_coord]], k)
     res = esda.Moran(x_i, w_i, permutations=nperm, transformation='b', two_tailed=False)
     I_obs = res.I
     p_orig = res.p_sim
 
     # Pre-load label arrays for faster reuse
-    first_type = labels_i['first_type'].values.copy()
-    spot_class = labels_i['spot_class'].values.copy()
-    first_type_weight = labels_i['first_type_weight'].values.copy()
-    second_type = labels_i['second_type'].values.copy()
-    doublet_certain_mask = spot_class == 'doublet_certain'
-    cts = np.unique(first_type)
+    first_type = labels_i['first_type'].to_numpy(dtype=object)
+    second_type = labels_i['second_type'].to_numpy(dtype=object)
+    first_type_weight = labels_i['first_type_weight'].to_numpy(dtype=float)
+    # a doublet without a second type can only keep its first type
+    doublet = (labels_i['spot_class'] == 'doublet_certain').to_numpy() & pd.notna(second_type)
     x_vals = x_i.to_numpy()
 
-    for _ in range(nperm):
-        # Probabilistic reassignment of doublets
-        rand_vals = np.random.rand(np.sum(doublet_certain_mask))
-        first_type[doublet_certain_mask] = np.where(
-            rand_vals > first_type_weight[doublet_certain_mask],
-            second_type[doublet_certain_mask],
-            first_type[doublet_certain_mask]
-        )
+    rng = np.random.default_rng(seed)
+    perm_I = np.empty(nperm)
 
-        # Cell-type constrained permutation
-        x_i_temp = x_vals.copy()
-        for ct in cts:
-            idx_ct = np.where(first_type == ct)[0]
-            x_i_temp[idx_ct] = np.random.permutation(x_i_temp[idx_ct])
+    for p in range(nperm):
+        cell_type = _draw_cell_types(first_type, second_type, first_type_weight, doublet, rng)
+        x_i_temp = _permute_within_types(x_vals, cell_type, rng)
 
         # Moran without internal permutations
-        res_perm = esda.Moran(x_i_temp, w_i, permutations=0, transformation='b')
-        perm_I.append(res_perm.I)
+        perm_I[p] = esda.Moran(x_i_temp, w_i, permutations=0, transformation='b').I
 
     # Compute constrained p-value
-    perm_I = np.array(perm_I)
     p_ct = (np.sum(perm_I >= I_obs) + 1) / (nperm + 1)
 
     return i, I_obs, p_orig, p_ct, len(x_i), imbalance
+
+
+def _draw_cell_types(first_type, second_type, first_type_weight, doublet, rng):
+    """
+    One random cell-type assignment. Doublets get their ``second_type`` with
+    probability ``1 - first_type_weight``, always starting from the original
+    ``first_type`` so draws are independent between permutations.
+    """
+    cell_type = first_type.copy()
+    to_second = doublet & (rng.random(len(cell_type)) > first_type_weight)
+    cell_type[to_second] = second_type[to_second]
+    return cell_type
+
+
+def _permute_within_types(x_vals, cell_type, rng):
+    """
+    Shuffle values among cells of the same type, for every type present in
+    ``cell_type`` (including second types absent from the first types).
+    """
+    x_perm = x_vals.copy()
+    _, groups = np.unique(np.asarray(cell_type).astype(str), return_inverse=True)
+    for g in range(groups.max() + 1):
+        idx = np.flatnonzero(groups == g)
+        x_perm[idx] = rng.permutation(x_perm[idx])
+    return x_perm
