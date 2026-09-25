@@ -13,8 +13,8 @@ This module provides functions to:
 from pathlib import Path
 import pandas as pd 
 import numpy as np
-import scanpy as sc
-from tqdm.notebook import tqdm
+import anndata as ad
+from tqdm.auto import tqdm
 from collections import defaultdict
 from scipy.sparse import csr_matrix, save_npz, load_npz, vstack
 
@@ -68,13 +68,12 @@ def allinfo_addct(
     print(len(x_filt))
 
     # Read labels file
-    adata = sc.read_h5ad(fn_adata)
-    labels = adata.obs
-    # labels['CellID-original'] = range(len(labels))
+    adata = ad.read_h5ad(fn_adata)
+    labels = adata.obs.copy()
     labels['celltype'] = labels['first_type']
     labels['celltype'] = labels['celltype'].cat.add_categories(['other'])
-    labels['celltype'][labels['spot_class'] != 'singlet'] = 'other'
-    labels['celltype'][np.isin(labels['celltype'], ['ExciteNeuron', 'InhibNeuron', 'Astro', 'Oligo']) == False] = 'other'
+    labels.loc[labels['spot_class'] != 'singlet', 'celltype'] = 'other'
+    labels.loc[~labels['celltype'].isin(['ExciteNeuron', 'InhibNeuron', 'Astro', 'Oligo']), 'celltype'] = 'other'
     labels['ct_reg'] = labels['celltype'].astype(str) + '_' + labels['subregion'].astype(str)
     
     # Filter otherhemisphere
@@ -86,7 +85,8 @@ def allinfo_addct(
                           how='left')  
     
     # Add ct label to allinfo
-    x_filt.loc[:,2] = x_filt.merge(CIDmap[['barcode','ct_reg']], left_on=3, 
+    # Replace the whole column: the placeholder column is often read as float
+    x_filt[2] = x_filt.merge(CIDmap[['barcode','ct_reg']], left_on=3,
                              right_on='barcode', how='left')['ct_reg'].values
 
     # Remove NaN values
@@ -344,13 +344,13 @@ def create_isoform_matrix(
     allinfo = allinfo[allinfo[1].isin(multi_iso_genes)]
     
     print(f'Potentially interesting isoforms (total): {len(gene_isoform_count)}')
-    num_novel_isoforms = gene_isoform_count[11].str.split('.', expand=True)[2].notna().sum()
+    num_novel_isoforms = gene_isoform_count[11].astype(str).str.count(r'\.').ge(2).sum()
     print(f'Potentially interesting isoforms (novel): {num_novel_isoforms}')
 
     x_sparse, gene_isoform_list = constructSparseMatrix(allinfo, fn_CIDmap, gene_isoform_count)
 
     # Read adata to get the labels
-    adata = sc.read_h5ad(fn_adata)
+    adata = ad.read_h5ad(fn_adata)
     labels = adata.obs
     x_sparse = x_sparse[labels['CellID-original'].values.astype(int)]
 
@@ -445,18 +445,18 @@ def create_isoform_matrix_twoslides(
     allinfo = allinfo[allinfo[1].isin(multi_iso_genes)]
     
     print(f'Potentially interesting isoforms (total): {len(gene_isoform_count)}')
-    num_novel_isoforms = gene_isoform_count[11].str.split('.', expand=True)[2].notna().sum()
+    num_novel_isoforms = gene_isoform_count[11].astype(str).str.count(r'\.').ge(2).sum()
     print(f'Potentially interesting isoforms (novel): {num_novel_isoforms}')
 
     x_sparse_S1, gene_isoform_list = constructSparseMatrix(allinfo_S1, fn_CIDmap_S1, gene_isoform_count)
     x_sparse_S2, gene_isoform_list = constructSparseMatrix(allinfo_S2, fn_CIDmap_S2, gene_isoform_count)
 
     # Read adata to get the labels
-    adata_S1 = sc.read_h5ad(fn_adata_S1)
+    adata_S1 = ad.read_h5ad(fn_adata_S1)
     labels_S1 = adata_S1.obs
     x_sparse_S1 = x_sparse_S1[labels_S1['CellID-original'].values.astype(int)]
 
-    adata_S2 = sc.read_h5ad(fn_adata_S2)
+    adata_S2 = ad.read_h5ad(fn_adata_S2)
     labels_S2 = adata_S2.obs
     x_sparse_S2 = x_sparse_S2[labels_S2['CellID-original'].values.astype(int)]
     
@@ -619,7 +619,7 @@ def create_isoform_matrix_spot(
     allinfo = allinfo[allinfo[1].isin(multi)]
 
     print(f"Potentially interesting isoforms: {len(gene_isoform_count)}")
-    num_novel_isoforms = gene_isoform_count[11].str.split('.', expand=True)[2].notna().sum()
+    num_novel_isoforms = gene_isoform_count[11].astype(str).str.count(r'\.').ge(2).sum()
     print(f'Potentially interesting isoforms (novel): {num_novel_isoforms}')
     
     # ---- load labels
