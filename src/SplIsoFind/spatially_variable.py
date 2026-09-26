@@ -26,8 +26,8 @@ def moransI(
     x: pd.DataFrame,
     labels: pd.DataFrame,
     nperm: int = 100000,
-    k: int = 10,
-    mincells: int = 50,
+    k: int = 50,
+    mincells: int = 250,
     imb: float = 0.05,
     mincellspergroup: int = 20,
     celltypes: list = ['All','ExciteNeuron','InhibNeuron','Astro','Oligo'],
@@ -50,9 +50,9 @@ def moransI(
         `spot_class`, and `first_type`.`spot_class` and `first_type` are used to filter cells per cell type.
     nperm : int, default=100000
         Number of permutations for significance testing.
-    k : int, default=10
+    k : int, default=50
         Number of nearest neighbors for spatial weight matrix.
-    mincells : int, default=50
+    mincells : int, default=250
         Minimum number of cells required to have relative expression values for an isoform.
     imb : float, default=0.05
         Minimum ratio of minority group to total.
@@ -136,8 +136,8 @@ def moransI_sparse(
     labels: pd.DataFrame,
     isoform_ids: pd.DataFrame,
     nperm: int = 100000,
-    k: int = 10,
-    mincells: int = 50,
+    k: int = 50,
+    mincells: int = 250,
     imb: float = 0.05,
     mincellspergroup: int = 20,
     celltypes: list = ['All','ExciteNeuron','InhibNeuron','Astro','Oligo'],
@@ -169,9 +169,9 @@ def moransI_sparse(
         Must contain one column called 'Transcript ID'
     nperm : int
         Number of permutations for significance testing.
-    k : int
+    k : int, default=50
         Number of nearest neighbors in spatial weight matrix.
-    mincells : int
+    mincells : int, default=250
         Minimum number of cells expressing an isoform.
     imb : float
         Minimum fraction for minority group.
@@ -410,7 +410,7 @@ def moransI_ctperm(
     labels: pd.DataFrame,
     var_totest: list,
     nperm: int = 10000,
-    k: int = 10,
+    k: int = 50,
     x_coord: str = 'x',
     y_coord: str = 'y',
     output_dir: str = '',
@@ -434,7 +434,7 @@ def moransI_ctperm(
         Subset of columns in `x` to test.
     nperm : int, default=10000
         Number of random permutations for cell-type assignment.
-    k : int, default=10
+    k : int, default=50
         Number of neighbors for spatial weight matrix.
     x_coord, y_coord : str
         Column names in `labels` for spatial coordinates.
@@ -500,7 +500,7 @@ def moransI_ctperm_sparse(
     isoform_ids: pd.DataFrame,
     var_totest: list,
     nperm: int = 10000,
-    k: int = 10,
+    k: int = 50,
     x_coord: str = 'x',
     y_coord: str = 'y',
     output_dir: str = '',
@@ -528,7 +528,7 @@ def moransI_ctperm_sparse(
         Subset of columns in `x` to test.
     nperm : int, default=10000
         Number of random permutations for cell-type assignment.
-    k : int, default=10
+    k : int, default=50
         Number of neighbors for spatial weight matrix.
     x_coord, y_coord : str
         Column names in `labels` for spatial coordinates.

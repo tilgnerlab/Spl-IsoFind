@@ -8,6 +8,8 @@ import pytest
 import SplIsoFind
 
 CELLTYPES = ['All', 'ExciteNeuron', 'Astro']
+# the synthetic data has ~180 cells per cell type, below the default mincells
+MORAN_KW = dict(nperm=199, celltypes=CELLTYPES, k=10, mincells=50)
 
 
 def read_allinfo(fn):
@@ -79,8 +81,16 @@ def test_sparse2df_matches_load_sparse(matrix):
 @pytest.fixture(scope='module')
 def moran(matrix):
     x, labels, isoforms = SplIsoFind.pp.load_sparse(str(matrix))
-    return SplIsoFind.sv.moransI_sparse(x, labels, isoforms, nperm=199,
-                                        celltypes=CELLTYPES, n_jobs=1)
+    return SplIsoFind.sv.moransI_sparse(x, labels, isoforms, n_jobs=1, **MORAN_KW)
+
+
+def test_moransI_defaults():
+    import inspect
+    for fn in (SplIsoFind.sv.moransI, SplIsoFind.sv.moransI_sparse):
+        p = inspect.signature(fn).parameters
+        assert (p['k'].default, p['mincells'].default) == (50, 250)
+    for fn in (SplIsoFind.sv.moransI_ctperm, SplIsoFind.sv.moransI_ctperm_sparse):
+        assert inspect.signature(fn).parameters['k'].default == 50
 
 
 def test_moransI_detects_spatial_isoform(moran):
@@ -100,8 +110,7 @@ def test_qvalues_are_filled(moran):
 
 def test_moransI_dense_matches_sparse(matrix, moran):
     x_df, labels_df = SplIsoFind.pp.sparse2df(str(matrix))
-    mI_d, pval_d, qval_d = SplIsoFind.sv.moransI(x_df, labels_df, nperm=199,
-                                                 celltypes=CELLTYPES, n_jobs=1)
+    mI_d, pval_d, qval_d = SplIsoFind.sv.moransI(x_df, labels_df, n_jobs=1, **MORAN_KW)
     mI, pval, qval = moran
     pd.testing.assert_frame_equal(mI_d, mI, check_names=False)
     pd.testing.assert_frame_equal(pval_d, pval, check_names=False)
@@ -109,8 +118,7 @@ def test_moransI_dense_matches_sparse(matrix, moran):
 
 def test_moransI_parallel_matches_serial(matrix, moran):
     x, labels, isoforms = SplIsoFind.pp.load_sparse(str(matrix))
-    mI, pval, _ = SplIsoFind.sv.moransI_sparse(x, labels, isoforms, nperm=199,
-                                               celltypes=CELLTYPES, n_jobs=2)
+    mI, pval, _ = SplIsoFind.sv.moransI_sparse(x, labels, isoforms, n_jobs=2, **MORAN_KW)
     pd.testing.assert_frame_equal(mI, moran[0])
     pd.testing.assert_frame_equal(pval, moran[1])
 
