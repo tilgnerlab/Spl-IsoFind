@@ -43,3 +43,8 @@ docs/notebooks/.ipynb_checkpoints/Tutorial - predefined regions-checkpoint.ipynb
 src/SplIsoFind/.ipynb_checkpoints/plotting-checkpoint.py
 src/SplIsoFind/.ipynb_checkpoints/preprocess-checkpoint.py
 src/SplIsoFind/.ipynb_checkpoints/spatially_variable-checkpoint.py
+
+# Python build artifacts
+__pycache__/
+*.egg-info/
+.pytest_cache/

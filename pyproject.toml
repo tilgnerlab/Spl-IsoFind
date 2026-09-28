@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "SplIsoFind"
-version = "0.1.8"
+version = "0.2.0"
 description = "Spatial Isoform Finder detects spatially variable isoforms in long-read spatial data"
 readme = { file = "README.md", content-type = "text/markdown" }
 license = { file = "LICENSE" }
@@ -17,26 +17,38 @@ classifiers = [
   "Development Status :: 5 - Production/Stable",
   "Intended Audience :: Science/Research",
   "License :: OSI Approved :: MIT License",
-  "Programming Language :: Python :: 3.9",
   "Programming Language :: Python :: 3.10",
   "Programming Language :: Python :: 3.11",
-  "Operating System :: POSIX :: Linux"
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Operating System :: OS Independent"
 ]
 
+requires-python = ">=3.10"
+
 dependencies = [
-  "pandas>=1.1.2,<2.0.0",
-  "numpy>=1.19.2,<2.0.0",
-  "scanpy>=1.10.3",
-  "scipy<=1.10.1",
-  "statsmodels",
-  "scikit-learn",
-  "libpysal",
-  "esda",
+  "pandas>=2.0",
+  "numpy>=1.24",
+  "scipy>=1.10",
+  "anndata>=0.9",
+  "statsmodels>=0.14",
+  "scikit-learn>=1.2",
+  "libpysal>=4.8",
+  "esda>=2.5",
+  "joblib>=1.2",
   "tqdm",
   "tqdm_joblib",
+  "matplotlib>=3.7"
+]
+
+[project.optional-dependencies]
+tutorials = [
   "jupyter",
-  "matplotlib",
-  "seaborn"
+  "seaborn",
+  "pillow"
+]
+test = [
+  "pytest"
 ]
 
 [project.urls]
